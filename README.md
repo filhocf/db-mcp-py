@@ -114,3 +114,4 @@ db-mcp-py --config config.json
 ## License
 
 MIT — see [LICENSE](LICENSE).
+# Gemini Code Assist validation
