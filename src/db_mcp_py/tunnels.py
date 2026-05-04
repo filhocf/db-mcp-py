@@ -103,17 +103,22 @@ class TunnelManager:
             return "127.0.0.1", tunnel.local_port
 
         except OSError as e:
-            if e.errno == 98:  # Address already in use — external tunnel?
-                import socket
+            import errno
 
-                with socket.socket() as s:
-                    try:
-                        s.settimeout(2)
-                        s.connect(("127.0.0.1", tunnel.local_port))
-                        logger.info("Tunnel %s: port %d already bound, reusing external tunnel", conn_id, tunnel.local_port)
-                        return "127.0.0.1", tunnel.local_port
-                    except OSError:
-                        pass
+            if e.errno == errno.EADDRINUSE:  # Address already in use — external tunnel?
+                import asyncio
+
+                try:
+                    _, writer = await asyncio.wait_for(
+                        asyncio.open_connection("127.0.0.1", tunnel.local_port),
+                        timeout=2.0,
+                    )
+                    writer.close()
+                    await writer.wait_closed()
+                    logger.info("Tunnel %s: port %d already bound, reusing external tunnel", conn_id, tunnel.local_port)
+                    return "127.0.0.1", tunnel.local_port
+                except (asyncio.TimeoutError, OSError):
+                    pass
             logger.exception("Tunnel %s: failed to open", conn_id)
             raise
         except Exception:
