@@ -102,6 +102,20 @@ class TunnelManager:
             )
             return "127.0.0.1", tunnel.local_port
 
+        except OSError as e:
+            if e.errno == 98:  # Address already in use — external tunnel?
+                import socket
+
+                with socket.socket() as s:
+                    try:
+                        s.settimeout(2)
+                        s.connect(("127.0.0.1", tunnel.local_port))
+                        logger.info("Tunnel %s: port %d already bound, reusing external tunnel", conn_id, tunnel.local_port)
+                        return "127.0.0.1", tunnel.local_port
+                    except OSError:
+                        pass
+            logger.exception("Tunnel %s: failed to open", conn_id)
+            raise
         except Exception:
             logger.exception("Tunnel %s: failed to open", conn_id)
             raise
