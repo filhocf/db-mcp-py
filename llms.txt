@@ -1,0 +1,52 @@
+# db-mcp-py
+
+> Multi-database MCP server with built-in SSH tunnels, read-only mode, and schema filtering.
+
+## Overview
+
+db-mcp-py connects AI agents to multiple databases through a single MCP server. Supports PostgreSQL, MySQL, SQLite, and MSSQL with automatic SSH tunnel management for remote databases behind firewalls.
+
+## Key Features
+
+- Multi-database: configure N databases, query any by ID
+- SSH tunnels: auto-managed tunnels for remote databases (no manual port forwarding)
+- Read-only mode: SELECT-only enforcement (default, configurable per database)
+- Schema filtering: expose only specific schemas/tables
+- Connection resilience: auto-reconnect on tunnel drops
+
+## Tools (3)
+
+- list_databases: show configured databases and connection status
+- schema: get table/column info for a database
+- query: execute read-only SQL (SELECT only, always use LIMIT)
+
+## Configuration
+
+`db-mcp-config.json`:
+```json
+{
+  "databases": {
+    "my-db": {
+      "type": "postgresql",
+      "host": "10.0.0.5", "port": 5432,
+      "database": "mydb", "user": "reader",
+      "password_env": "MY_DB_PASSWORD",
+      "ssh": {
+        "host": "bastion.example.com",
+        "user": "tunnel", "key_file": "~/.ssh/id_rsa"
+      }
+    }
+  }
+}
+```
+
+## Installation
+
+```bash
+uvx db-mcp-py
+```
+
+## Links
+
+- GitHub: https://github.com/filhocf/db-mcp-py
+- License: MIT
