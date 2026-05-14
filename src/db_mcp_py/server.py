@@ -233,6 +233,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="db-mcp-py: Multi-database MCP server")
     parser.add_argument("-c", "--config", required=True, help="Path to config.json")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--transport", default="stdio", choices=["stdio", "streamable-http"],
+        help="Transport mode (default: stdio)",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP bind host (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=3200, help="HTTP port (default: 3200)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -247,15 +253,54 @@ def main() -> None:
 
     server = _create_server()
 
-    async def run() -> None:
-        await _startup()
-        try:
-            async with stdio_server() as (read_stream, write_stream):
-                await server.run(read_stream, write_stream, server.create_initialization_options())
-        finally:
-            await _shutdown()
+    if args.transport == "streamable-http":
+        asyncio.run(_run_http(server, args.host, args.port))
+    else:
+        asyncio.run(_run_stdio(server))
 
-    asyncio.run(run())
+
+async def _run_stdio(server: Server) -> None:
+    """Run server over stdio transport."""
+    await _startup()
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    finally:
+        await _shutdown()
+
+
+async def _run_http(server: Server, host: str, port: int) -> None:
+    """Run server over StreamableHTTP transport."""
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+    import uvicorn
+
+    await _startup()
+
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        stateless=True,
+    )
+
+    async def lifespan(app):
+        async with session_manager.run():
+            yield
+
+    starlette_app = Starlette(
+        routes=[Mount("/", app=session_manager.handle_request)],
+        lifespan=lifespan,
+    )
+
+    logger.info("Serving db-mcp-py via StreamableHTTP on http://%s:%d/mcp", host, port)
+
+    config = uvicorn.Config(starlette_app, host=host, port=port, log_level="info")
+    uvi_server = uvicorn.Server(config)
+
+    try:
+        await uvi_server.serve()
+    finally:
+        await _shutdown()
 
 
 if __name__ == "__main__":
