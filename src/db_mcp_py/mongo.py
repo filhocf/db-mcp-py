@@ -110,7 +110,7 @@ class MongoManager:
     async def query(self, conn_id: str, query_str: str) -> list[dict]:
         """Execute a read-only MongoDB query (JSON filter on a collection)."""
         mc = self.connections.get(conn_id)
-        if not mc or not mc.db:
+        if mc is None or mc.db is None:
             raise ConnectionError(f"MongoDB '{conn_id}' is not connected")
 
         # Expected format: {"collection": "name", "filter": {...}, "limit": N}
@@ -134,7 +134,7 @@ class MongoManager:
     async def get_schema(self, conn_id: str) -> list[dict]:
         """Get schema by sampling collections."""
         mc = self.connections.get(conn_id)
-        if not mc or not mc.db:
+        if mc is None or mc.db is None:
             raise ConnectionError(f"MongoDB '{conn_id}' is not connected")
 
         cached = mc.get_cached_schema()
