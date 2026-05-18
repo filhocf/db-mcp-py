@@ -81,6 +81,7 @@ class MongoManager:
 
         try:
             from urllib.parse import quote_plus
+
             if cfg.password:
                 user = quote_plus(cfg.user or "")
                 password = quote_plus(cfg.password)

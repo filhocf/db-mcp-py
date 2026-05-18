@@ -175,9 +175,7 @@ class ConnectionManager:
         timeout = db.effective.get("query_timeout", 30)
         try:
             async with db.engine.connect() as conn:
-                result = await asyncio.wait_for(
-                    conn.execute(text(sql)), timeout=timeout
-                )
+                result = await asyncio.wait_for(conn.execute(text(sql)), timeout=timeout)
                 return [dict(row._mapping) for row in result]
         except Exception as e:
             if _retry and "connection" in str(e).lower():
@@ -255,12 +253,15 @@ class ConnectionManager:
 
 async def _create_engine(url: str, **kwargs) -> AsyncEngine:
     """Create and verify an async engine."""
+
+
 async def _create_engine(url: str, **kwargs) -> AsyncEngine:
     events = kwargs.pop("events", {})
     engine = create_async_engine(url, **kwargs)
     # Apply driver-level events (e.g., Oracle read-only)
     if events:
         from sqlalchemy import event as sa_event
+
         for event_name, handler in events.items():
             sa_event.listen(engine.sync_engine, event_name, handler)
     # Verify connectivity
