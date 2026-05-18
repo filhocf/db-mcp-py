@@ -136,7 +136,6 @@ class ConnectionManager:
 
             events = {}
             if cfg.type == "oracle":
-                from sqlalchemy import event
 
                 def _set_oracle_readonly(dbapi_conn, connection_record):
                     cursor = dbapi_conn.cursor()
