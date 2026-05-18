@@ -18,6 +18,8 @@ from mcp.types import TextContent, Tool
 
 from .config import Config, load_config
 from .database import ConnectionManager, DatabaseConnection
+from .mongo import MongoConnection, MongoManager
+from .schema import get_schema
 from .tunnels import TunnelManager, check_vpn
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,7 @@ def _json_serializer(obj: object) -> object:
 _config: Config | None = None
 _tunnel_mgr = TunnelManager()
 _conn_mgr = ConnectionManager()
+_mongo_mgr = MongoManager()
 
 
 async def _startup() -> None:
@@ -100,32 +103,62 @@ async def _startup() -> None:
 
         if conn_cfg.require_vpn and not has_vpn:
             logger.info("Skipping %s: requires VPN", conn_id)
-            _conn_mgr.connections[conn_id] = DatabaseConnection(
-                config=conn_cfg,
-                effective=_config.get_effective(conn_cfg),
-                error="VPN not available",
-            )
+            if conn_cfg.type == "mongodb":
+                _mongo_mgr.connections[conn_id] = MongoConnection(
+                    config=conn_cfg,
+                    effective=_config.get_effective(conn_cfg),
+                    error="VPN not available",
+                )
+            else:
+                _conn_mgr.connections[conn_id] = DatabaseConnection(
+                    config=conn_cfg,
+                    effective=_config.get_effective(conn_cfg),
+                    error="VPN not available",
+                )
             continue
 
-        db = DatabaseConnection(config=conn_cfg, effective=_config.get_effective(conn_cfg))
+        resolved_host = ""
+        resolved_port = 0
 
         if conn_cfg.tunnel:
             try:
-                host, port = await _tunnel_mgr.open(conn_id, conn_cfg.tunnel)
-                db.resolved_host = host
-                db.resolved_port = port
+                resolved_host, resolved_port = await _tunnel_mgr.open(conn_id, conn_cfg.tunnel)
             except Exception as e:
                 logger.warning("Skipping %s: tunnel failed: %s", conn_id, e)
-                db.error = f"Tunnel failed: {e}"
-                _conn_mgr.connections[conn_id] = db
+                if conn_cfg.type == "mongodb":
+                    _mongo_mgr.connections[conn_id] = MongoConnection(
+                        config=conn_cfg,
+                        effective=_config.get_effective(conn_cfg),
+                        error=f"Tunnel failed: {e}",
+                    )
+                else:
+                    db = DatabaseConnection(config=conn_cfg, effective=_config.get_effective(conn_cfg))
+                    db.error = f"Tunnel failed: {e}"
+                    _conn_mgr.connections[conn_id] = db
                 continue
 
-        await _conn_mgr.connect(conn_id, db)
+        if conn_cfg.type == "mongodb":
+            mc = MongoConnection(
+                config=conn_cfg,
+                effective=_config.get_effective(conn_cfg),
+                resolved_host=resolved_host,
+                resolved_port=resolved_port,
+            )
+            await _mongo_mgr.connect(conn_id, mc)
+        else:
+            db = DatabaseConnection(
+                config=conn_cfg,
+                effective=_config.get_effective(conn_cfg),
+                resolved_host=resolved_host,
+                resolved_port=resolved_port,
+            )
+            await _conn_mgr.connect(conn_id, db)
 
 
 async def _shutdown() -> None:
     """Clean shutdown."""
     await _conn_mgr.close_all()
+    await _mongo_mgr.close_all()
     await _tunnel_mgr.close_all()
 
 
@@ -136,6 +169,7 @@ def _create_server() -> Server:
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         connected = [cid for cid, db in _conn_mgr.connections.items() if db.is_connected]
+        connected += [cid for cid, mc in _mongo_mgr.connections.items() if mc.is_connected]
         db_enum_desc = ", ".join(connected) if connected else "(none connected)"
 
         return [
@@ -176,6 +210,7 @@ def _create_server() -> Server:
                 result = [
                     {
                         "id": cid,
+                        "type": db.config.type,
                         "database": db.config.database,
                         "connected": db.is_connected,
                         "error": db.error,
@@ -185,23 +220,42 @@ def _create_server() -> Server:
                     }
                     for cid, db in _conn_mgr.connections.items()
                 ]
+                result += [
+                    {
+                        "id": cid,
+                        "type": "mongodb",
+                        "database": mc.config.database,
+                        "connected": mc.is_connected,
+                        "error": mc.error,
+                        "schemas": [],
+                        "read_only": True,
+                        "has_tunnel": mc.config.tunnel is not None,
+                    }
+                    for cid, mc in _mongo_mgr.connections.items()
+                ]
                 return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
             elif name == "query":
                 db_id = arguments["database"]
                 sql = arguments["sql"].strip()
 
+                # MongoDB: pass JSON query directly
+                if db_id in _mongo_mgr.connections:
+                    rows = await _mongo_mgr.query(db_id, sql)
+                    text_out = json.dumps(rows, indent=2, default=_json_serializer)
+                    return [TextContent(type="text", text=f"({len(rows)} docs)\n{text_out}")]
+
                 error = validate_sql(sql)
                 if error:
                     return [TextContent(type="text", text=f"Error: {error}")]
 
                 rows = await _conn_mgr.query(db_id, sql)
-                text = json.dumps(rows, indent=2, default=_json_serializer)
-                return [TextContent(type="text", text=f"({len(rows)} rows)\n{text}")]
+                text_out = json.dumps(rows, indent=2, default=_json_serializer)
+                return [TextContent(type="text", text=f"({len(rows)} rows)\n{text_out}")]
 
             elif name == "schema":
                 db_id = arguments["database"]
-                rows = await _conn_mgr.get_schema(db_id)
+                rows = await get_schema(db_id, _conn_mgr, _mongo_mgr)
 
                 tables: dict[str, list] = {}
                 for row in rows:
@@ -234,7 +288,9 @@ def main() -> None:
     parser.add_argument("-c", "--config", required=True, help="Path to config.json")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument(
-        "--transport", default="stdio", choices=["stdio", "streamable-http"],
+        "--transport",
+        default="stdio",
+        choices=["stdio", "streamable-http"],
         help="Transport mode (default: stdio)",
     )
     parser.add_argument("--host", default="127.0.0.1", help="HTTP bind host (default: 127.0.0.1)")

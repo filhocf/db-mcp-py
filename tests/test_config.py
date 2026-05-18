@@ -144,3 +144,46 @@ def test_remote_port_default_5432():
         assert cfg.connections[0].tunnel.remote_port == 5432
     finally:
         os.unlink(path)
+
+
+def test_type_defaults_to_postgresql():
+    """Config without 'type' field defaults to postgresql (backward compat)."""
+    data = {
+        "connections": [
+            {"id": "legacy", "database": "db", "user": "u", "port": 5432},
+        ],
+    }
+    path = _write_config(data)
+    try:
+        cfg = load_config(path)
+        assert cfg.connections[0].type == "postgresql"
+    finally:
+        os.unlink(path)
+
+
+def test_type_explicit_mysql():
+    data = {
+        "connections": [
+            {"id": "mysql_db", "type": "mysql", "database": "db", "user": "u", "port": 3306},
+        ],
+    }
+    path = _write_config(data)
+    try:
+        cfg = load_config(path)
+        assert cfg.connections[0].type == "mysql"
+    finally:
+        os.unlink(path)
+
+
+def test_type_mongodb():
+    data = {
+        "connections": [
+            {"id": "mongo_db", "type": "mongodb", "host": "localhost", "database": "logs", "user": "u", "port": 27017},
+        ],
+    }
+    path = _write_config(data)
+    try:
+        cfg = load_config(path)
+        assert cfg.connections[0].type == "mongodb"
+    finally:
+        os.unlink(path)
