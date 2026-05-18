@@ -27,6 +27,7 @@ class ConnectionConfig(BaseModel):
     """Single database connection configuration."""
 
     id: str
+    type: str = "postgresql"
     host: str = "localhost"
     port: int = 5432
     database: str

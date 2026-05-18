@@ -25,6 +25,51 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      oracle:
+        image: gvenzl/oracle-free:slim
+        env:
+          ORACLE_PASSWORD: test
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd "healthcheck.sh"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 10
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -32,6 +77,25 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v7
       - name: Install
-        run: uv sync --group dev
+        run: uv sync --group dev --all-extras
       - name: Test
+        env:
+          TEST_PG_HOST: localhost
+          TEST_PG_PORT: 5432
+          TEST_PG_DB: testdb
+          TEST_PG_USER: postgres
+          TEST_PG_PASSWORD: test
+          TEST_MYSQL_HOST: localhost
+          TEST_MYSQL_PORT: 3306
+          TEST_MYSQL_DB: testdb
+          TEST_MYSQL_USER: root
+          TEST_MYSQL_PASSWORD: test
+          TEST_ORACLE_HOST: localhost
+          TEST_ORACLE_PORT: 1521
+          TEST_ORACLE_DB: FREEPDB1
+          TEST_ORACLE_USER: system
+          TEST_ORACLE_PASSWORD: test
+          TEST_MONGO_HOST: localhost
+          TEST_MONGO_PORT: 27017
+          TEST_MONGO_DB: testdb
         run: uv run pytest tests/ -v --tb=short

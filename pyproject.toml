@@ -28,9 +28,14 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "uvicorn>=0.34.0",
     "starlette>=0.40.0",
+    "sqlalchemy[asyncio]>=2.0.0",
 ]
 
 [project.optional-dependencies]
+mysql = ["aiomysql>=0.2.0"]
+oracle = ["oracledb>=2.0.0"]
+mongo = ["motor>=3.3.0"]
+all = ["aiomysql>=0.2.0", "oracledb>=2.0.0", "motor>=3.3.0"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
