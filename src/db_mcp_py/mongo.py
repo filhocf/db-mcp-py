@@ -41,6 +41,24 @@ class MongoConnection:
         self._schema_cached_at = monotonic()
 
 
+_DANGEROUS_OPERATORS = frozenset({"$where", "$function", "$accumulator", "$expr"})
+
+
+def _sanitize_mongo_filter(filt: dict) -> None:
+    """Reject MongoDB filters containing dangerous operators (NoSQL injection)."""
+    if not isinstance(filt, dict):
+        raise ValueError("MongoDB filter must be a dict")
+    for key, value in filt.items():
+        if key in _DANGEROUS_OPERATORS:
+            raise ValueError(f"Operator '{key}' is not allowed (security)")
+        if isinstance(value, dict):
+            _sanitize_mongo_filter(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    _sanitize_mongo_filter(item)
+
+
 @dataclass
 class MongoManager:
     """Manages MongoDB connections via motor."""
@@ -95,6 +113,7 @@ class MongoManager:
             raise ValueError("MongoDB query requires 'collection' field")
 
         filt = params.get("filter", {})
+        _sanitize_mongo_filter(filt)
         limit = params.get("limit", 100)
         projection = params.get("projection")
 

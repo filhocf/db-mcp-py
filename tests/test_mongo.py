@@ -101,3 +101,28 @@ async def test_mongo_integration():
     # Cleanup
     await mc.db["test_coll"].drop()
     await mgr.close_all()
+
+
+def test_sanitize_rejects_where():
+    from db_mcp_py.mongo import _sanitize_mongo_filter
+    import pytest
+
+    with pytest.raises(ValueError, match="not allowed"):
+        _sanitize_mongo_filter({"$where": "this.a > 1"})
+
+
+def test_sanitize_rejects_nested_function():
+    from db_mcp_py.mongo import _sanitize_mongo_filter
+    import pytest
+
+    with pytest.raises(ValueError, match="not allowed"):
+        _sanitize_mongo_filter({"field": {"$function": {"body": "return true"}}})
+
+
+def test_sanitize_allows_normal_operators():
+    from db_mcp_py.mongo import _sanitize_mongo_filter
+
+    # Should not raise
+    _sanitize_mongo_filter({"age": {"$gt": 18}})
+    _sanitize_mongo_filter({"$and": [{"a": 1}, {"b": 2}]})
+    _sanitize_mongo_filter({"name": {"$regex": "^test"}})
