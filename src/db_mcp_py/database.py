@@ -151,6 +151,7 @@ class ConnectionManager:
                     pool_size=db.effective["max_connections"],
                     pool_pre_ping=True,
                     connect_args=connect_args,
+                    events=events,
                 ),
                 timeout=db.effective.get("connect_timeout", 15),
             )
@@ -171,10 +172,13 @@ class ConnectionManager:
         if not db or not db.engine:
             raise ConnectionError(f"Database '{conn_id}' is not connected")
 
-        logger.info("Query [%s]: %s", conn_id, sql[:200])
+        logger.debug("Query [%s]: %s", conn_id, sql[:200])
+        timeout = db.effective.get("query_timeout", 30)
         try:
             async with db.engine.connect() as conn:
-                result = await conn.execute(text(sql))
+                result = await asyncio.wait_for(
+                    conn.execute(text(sql)), timeout=timeout
+                )
                 return [dict(row._mapping) for row in result]
         except Exception as e:
             if _retry and "connection" in str(e).lower():
@@ -252,7 +256,14 @@ class ConnectionManager:
 
 async def _create_engine(url: str, **kwargs) -> AsyncEngine:
     """Create and verify an async engine."""
+async def _create_engine(url: str, **kwargs) -> AsyncEngine:
+    events = kwargs.pop("events", {})
     engine = create_async_engine(url, **kwargs)
+    # Apply driver-level events (e.g., Oracle read-only)
+    if events:
+        from sqlalchemy import event as sa_event
+        for event_name, handler in events.items():
+            sa_event.listen(engine.sync_engine, event_name, handler)
     # Verify connectivity
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))

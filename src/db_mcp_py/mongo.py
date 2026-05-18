@@ -80,7 +80,13 @@ class MongoManager:
         port = mc.resolved_port or cfg.port
 
         try:
-            url = f"mongodb://{cfg.user}:{cfg.password}@{host}:{port}" if cfg.password else f"mongodb://{host}:{port}"
+            from urllib.parse import quote_plus
+            if cfg.password:
+                user = quote_plus(cfg.user or "")
+                password = quote_plus(cfg.password)
+                url = f"mongodb://{user}:{password}@{host}:{port}"
+            else:
+                url = f"mongodb://{host}:{port}"
             client = AsyncIOMotorClient(
                 url,
                 serverSelectionTimeoutMS=mc.effective.get("connect_timeout", 15) * 1000,
