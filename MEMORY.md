@@ -1,16 +1,14 @@
 # MEMORY.md — db-mcp-py
 
-## Estado Atual
+## Estado Atual (19/mai/2026)
 
 - **Versão**: 0.2.0
+- **Repo**: https://github.com/filhocf/db-mcp-py
 - **PyPI**: https://pypi.org/project/db-mcp-py/
-- **Transporte**: stdio
-- **Bancos suportados**: PostgreSQL, SQLite
-- **Modo**: read-only (SELECT only, LIMIT enforced)
+- **Status**: ✅ Estável, em uso diário (mir_dev, sicar_dev, coreapi_dev)
 
-## Pendente
+## Decisões
 
-- Suporte Oracle (python-oracledb)
-- Suporte MySQL/MariaDB (aiomysql)
-- Schema cache com TTL
-- EXPLAIN automático em queries >5s
+- SQLAlchemy async (PG + MySQL + Oracle) + Motor (MongoDB)
+- Read-only 3 camadas: SQL whitelist + DB session + Oracle events
+- Resiliente sem VPN (reconecta quando disponível)

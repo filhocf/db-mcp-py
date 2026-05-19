@@ -1,45 +1,39 @@
-# AGENTS.md
+# AGENTS.md — db-mcp-py
 
 ## Project Overview
 
-MCP server for database access — read-only SQL queries and schema discovery across multiple databases. Built with Python (FastMCP), supports PostgreSQL and SQLite. Stdio transport. Entry point: `src/db_mcp_py/server.py`.
+Multi-database MCP server supporting PostgreSQL, MySQL, Oracle, and MongoDB with SSH tunnels, read-only enforcement, and schema filtering. Designed for AI agents that need safe, read-only database access.
 
 ## Architecture
 
 ```
 src/db_mcp_py/
-├── server.py            ← FastMCP server, registers tools (query, schema, list_databases)
-├── config.py            ← Database config loading from YAML/env
-├── adapters/
-│   ├── base.py          ← Abstract adapter interface
-│   ├── postgres.py      ← asyncpg adapter (read-only queries, schema)
-│   └── sqlite.py        ← aiosqlite adapter
-└── utils.py             ← Query sanitization, LIMIT enforcement
+├── __init__.py       # Package version
+├── server.py         # MCP server (mcp.server.Server) — 3 tools: query, schema, list_databases
+├── config.py         # Pydantic config loader (JSON/env) — DatabaseConfig, TunnelConfig
+├── database.py       # SQLAlchemy async engine manager (PG/MySQL/Oracle)
+├── mongo.py          # Motor async MongoDB manager
+├── schema.py         # Schema introspection (tables, columns, types, constraints)
+├── tunnels.py        # SSH tunnel manager (sshtunnel library)
 ```
 
-**Data flow:** Tool call → resolve database by ID → get adapter → execute query (read-only) → format result → return.
+## Data Flow
+
+```
+AI Agent → MCP (stdio/HTTP) → server.py → database.py/mongo.py → [SSH tunnel] → Database
+```
 
 ## Key Conventions
 
-- **Read-only**: all queries are SELECT only. No mutations allowed.
-- **LIMIT enforcement**: queries without LIMIT get one appended automatically.
-- **Config**: databases defined in `config.yaml` or env vars (`DB_MCP_*`).
-- **Adapters**: each DB type has an async adapter implementing `query()` and `schema()`.
-- **Resilient**: if a database is unreachable, other databases still work.
-
-## Adding a New Database Adapter
-
-1. Create `src/db_mcp_py/adapters/{driver}.py` implementing `BaseAdapter`.
-2. Implement `async query(sql, params)` and `async get_schema()`.
-3. Register in `config.py` type mapping.
-4. Add tests in `tests/test_{driver}.py`.
+- **Config**: JSON file via `-c` flag or env vars
+- **Read-only**: SQL whitelist + DB session + Oracle events (3 layers)
+- **MongoDB**: _sanitize_mongo_filter blocks dangerous operators
+- **Transport**: stdio (default) + streamable-http (MCP_TRANSPORT env)
 
 ## Tests
 
 ```bash
-pytest                        # All tests
-pytest tests/test_sqlite.py   # SQLite adapter only
+uv sync --group dev
+uv run pytest tests/ -v --tb=short
+uv run ruff check src/ tests/
 ```
-
-- Tests use in-memory SQLite (no external DB needed).
-- PostgreSQL tests require a running instance (skipped if unavailable).
