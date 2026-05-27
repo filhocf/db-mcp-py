@@ -148,7 +148,11 @@ class ConnectionManager:
                 _create_engine(
                     url,
                     pool_size=db.effective["max_connections"],
-                    pool_pre_ping=True,
+                    # pool_pre_ping disabled for MySQL: aiomysql ping() signature
+                    # changed and breaks SQLAlchemy's adapter. pool_recycle ensures
+                    # stale connections are replaced hourly instead.
+                    pool_pre_ping=cfg.type != "mysql",
+                    pool_recycle=3600,
                     connect_args=connect_args,
                     events=events,
                 ),
