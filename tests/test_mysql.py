@@ -108,7 +108,9 @@ async def test_mysql_schema_uses_generic_inspect(mock_create_engine):
         },
     ]
     mock_conn.run_sync = AsyncMock(return_value=schema_data)
-    mock_engine.connect = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock()))
+    mock_engine.connect = MagicMock(
+        return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock())
+    )
 
     mock_create_engine.return_value = mock_engine
 
