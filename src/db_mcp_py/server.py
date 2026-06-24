@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import re
 import sys
 from datetime import date, datetime, time, timedelta
@@ -175,6 +176,11 @@ def _create_server() -> Server:
 
         return [
             Tool(
+                name="reconnect",
+                description="Reconnect all databases (use after VPN connects or network changes)",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
                 name="list_databases",
                 description="List all configured databases and their connection status",
                 inputSchema={"type": "object", "properties": {}},
@@ -207,6 +213,17 @@ def _create_server() -> Server:
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
+            if name == "reconnect":
+                await _conn_mgr.close_all()
+                await _mongo_mgr.close_all()
+                await _tunnel_mgr.close_all()
+                _conn_mgr.connections.clear()
+                _mongo_mgr.connections.clear()
+                await _startup()
+                connected = [cid for cid, db in _conn_mgr.connections.items() if db.is_connected]
+                connected += [cid for cid, mc in _mongo_mgr.connections.items() if mc.is_connected]
+                return [TextContent(type="text", text=f"Reconnected. Available: {connected}")]
+
             if name == "list_databases":
                 result = [
                     {
@@ -298,6 +315,12 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=3200, help="HTTP port (default: 3200)")
     args = parser.parse_args()
 
+    # Env var fallback (for systemd service)
+    if os.environ.get("MCP_TRANSPORT"):
+        args.transport = os.environ["MCP_TRANSPORT"]
+    if os.environ.get("MCP_PORT"):
+        args.port = int(os.environ["MCP_PORT"])
+
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -329,7 +352,8 @@ async def _run_stdio(server: Server) -> None:
 async def _run_http(server: Server, host: str, port: int) -> None:
     """Run server over StreamableHTTP transport."""
     from starlette.applications import Starlette
-    from starlette.routing import Mount
+    from starlette.responses import JSONResponse
+    from starlette.routing import Mount, Route
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
     import uvicorn
 
@@ -344,8 +368,16 @@ async def _run_http(server: Server, host: str, port: int) -> None:
         async with session_manager.run():
             yield
 
+    async def health_handler(request):
+        connected = [cid for cid, db in _conn_mgr.connections.items() if db.is_connected]
+        connected += [cid for cid, mc in _mongo_mgr.connections.items() if mc.is_connected]
+        return JSONResponse({"status": "ok", "connected": connected, "version": "0.3.1"})
+
     starlette_app = Starlette(
-        routes=[Mount("/", app=session_manager.handle_request)],
+        routes=[
+            Route("/health", health_handler, methods=["GET"]),
+            Mount("/", app=session_manager.handle_request),
+        ],
         lifespan=lifespan,
     )
 
