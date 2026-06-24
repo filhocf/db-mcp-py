@@ -95,7 +95,8 @@ async def _startup() -> None:
     """Connect to all configured databases, opening tunnels as needed."""
     assert _config is not None
     vpn_prefixes = _config.defaults.vpn_route_prefixes or None
-    has_vpn = check_vpn(vpn_prefixes)
+    vpn_targets = [(c.host, c.port) for c in _config.connections if c.require_vpn]
+    has_vpn = check_vpn(vpn_prefixes, probe_targets=vpn_targets or None)
     logger.info("VPN detected: %s", has_vpn)
 
     for conn_cfg in _config.connections:

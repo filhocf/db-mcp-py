@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 import subprocess
 
 import asyncssh
@@ -143,17 +144,28 @@ class TunnelManager:
             await self.close(conn_id)
 
 
-def check_vpn(prefixes: list[str] | None = None) -> bool:
-    """Check if VPN is active by looking for specific route prefixes."""
+def check_vpn(
+    prefixes: list[str] | None = None,
+    probe_targets: list[tuple[str, int]] | None = None,
+    probe_timeout: float = 2.0,
+) -> bool:
+    """Check if VPN is active by route prefixes, falling back to TCP probe."""
     if not prefixes:
         prefixes = ["10.195.", "10.202.", "10.188."]
     try:
-        result = subprocess.run(
-            ["ip", "route"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return any(prefix in result.stdout for prefix in prefixes)
+        result = subprocess.run(["ip", "route"], capture_output=True, text=True, timeout=5)
+        if any(prefix in result.stdout for prefix in prefixes):
+            return True
     except Exception:
+        pass
+    # Fallback: TCP probe
+    if not probe_targets:
         return False
+    for host, port in probe_targets:
+        try:
+            conn = socket.create_connection((host, port), timeout=probe_timeout)
+            conn.close()
+            return True
+        except (OSError, socket.timeout):
+            continue
+    return False
