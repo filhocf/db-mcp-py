@@ -17,13 +17,13 @@ This project is a Python reimplementation inspired by [FreePeak/db-mcp-server](h
 
 ## Features
 
-- **Multi-database**: Connect to N PostgreSQL databases simultaneously
+- **Multi-database**: Connect to PostgreSQL, MySQL/MariaDB, Oracle, and MongoDB simultaneously
 - **SSH tunnels**: Built-in asyncssh tunnels with jump host support — no external scripts needed
 - **Read-only**: Only `query` and `schema` tools exposed. No `execute`, `transaction`, or DDL
 - **Schema filtering**: Per-connection `schemas` whitelist — only expose relevant tables
 - **Env var expansion**: Use `${DB_PASSWORD}`, `${HOME}` etc. in config
 - **Graceful degradation**: Unreachable databases are skipped, rest keeps working
-- **Network detection**: Optional VPN check before attempting connections
+- **Network detection**: Optional VPN check before attempting connections (TCP probe fallback)
 - **Reconnect**: Automatic retry on connection loss with exponential backoff
 - **Unified tools**: Single `query` tool with `database` parameter (inspired by FreePeak v1.9.0)
 
@@ -102,6 +102,24 @@ db-mcp-py --config config.json
   }
 }
 ```
+
+### MySQL/MariaDB connection
+
+```json
+{
+  "id": "my_mysql",
+  "type": "mysql",
+  "host": "mysql-server.internal",
+  "port": 3306,
+  "database": "app_db",
+  "user": "readonly_user",
+  "password": "${MYSQL_PASSWORD}",
+  "schemas": ["app_db"],
+  "require_vpn": true
+}
+```
+
+Install the MySQL driver: `pip install db-mcp-py[mysql]` or `uvx --with aiomysql db-mcp-py`
 
 ## MCP Tools
 
