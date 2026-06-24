@@ -29,7 +29,7 @@ class ConnectionConfig(BaseModel):
     id: str
     type: str = "postgresql"
     host: str = "localhost"
-    port: int = 5432
+    port: int | None = None
     database: str
     user: str
     password: str | None = None
@@ -40,6 +40,13 @@ class ConnectionConfig(BaseModel):
     max_connections: int | None = None
     read_only: bool | None = None
     ssl: bool | str = False
+
+    @model_validator(mode="after")
+    def resolve_default_port(self) -> ConnectionConfig:
+        if self.port is None:
+            defaults = {"postgresql": 5432, "mysql": 3306, "mongodb": 27017}
+            self.port = defaults.get(self.type, 5432)
+        return self
 
 
 class DefaultsConfig(BaseModel):

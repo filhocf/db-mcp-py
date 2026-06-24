@@ -132,11 +132,17 @@ async def test_mysql_schema_uses_generic_inspect(mock_create_engine):
 # --- Config ---
 
 
-def test_mysql_config_default_port():
+def test_mysql_config_custom_port():
     """MySQL connections should work with custom port."""
     cfg = ConnectionConfig(id="m", type="mysql", database="db", user="u", port=3307)
     assert cfg.port == 3307
     assert cfg.type == "mysql"
+
+
+def test_mysql_config_default_port():
+    """MySQL without explicit port should default to 3306."""
+    cfg = ConnectionConfig(id="m", type="mysql", database="db", user="u")
+    assert cfg.port == 3306
 
 
 def test_mysql_config_with_tunnel():
