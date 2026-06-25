@@ -267,8 +267,15 @@ def _create_server() -> Server:
                     "type": "object",
                     "properties": {
                         "database": {"type": "string", "description": f"Database ID. One of: {db_enum_desc}"},
-                        "sql": {"type": "string", "description": "SQL write statement (INSERT, UPDATE, DELETE, or DDL for admin)."},
-                        "force": {"type": "boolean", "description": "Override safety checks (e.g. DELETE without WHERE). Default: false.", "default": False},
+                        "sql": {
+                            "type": "string",
+                            "description": "SQL write statement (INSERT, UPDATE, DELETE, or DDL for admin).",
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "Override safety checks (e.g. DELETE without WHERE). Default: false.",
+                            "default": False,
+                        },
                     },
                     "required": ["database", "sql"],
                 },
