@@ -53,6 +53,14 @@ class TestPermissionConfig:
         finally:
             os.unlink(path)
 
+    def test_read_only_true_conflicts_with_readwrite(self):
+        with pytest.raises(Exception):
+            ConnectionConfig(id="test", database="db", user="u", port=5432, read_only=True, permission="readwrite")
+
+    def test_read_only_none_allows_readwrite(self):
+        cfg = ConnectionConfig(id="test", database="db", user="u", port=5432, read_only=None, permission="readwrite")
+        assert cfg.permission == "readwrite"
+
 
 # --- SQL validation for writes ---
 

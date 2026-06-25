@@ -49,6 +49,12 @@ class ConnectionConfig(BaseModel):
             self.port = defaults.get(self.type, 5432)
         return self
 
+    @model_validator(mode="after")
+    def validate_permission_consistency(self) -> ConnectionConfig:
+        if self.read_only is True and self.permission != "readonly":
+            raise ValueError(f"read_only=True conflicts with permission='{self.permission}'")
+        return self
+
 
 class DefaultsConfig(BaseModel):
     """Default settings applied to all connections."""
