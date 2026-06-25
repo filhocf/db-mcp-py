@@ -3,12 +3,12 @@
 import json
 import os
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+
 
 import pytest
 
-from db_mcp_py.config import ConnectionConfig, Config, DefaultsConfig, load_config
-from db_mcp_py.server import validate_sql, validate_write_sql
+from db_mcp_py.config import ConnectionConfig, load_config
+from db_mcp_py.server import validate_write_sql
 
 
 # --- Config: permission field ---

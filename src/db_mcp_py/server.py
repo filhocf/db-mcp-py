@@ -78,6 +78,10 @@ def validate_write_sql(sql: str, permission: str, *, force: bool = False) -> str
     if not cleaned:
         return "Empty statement"
 
+    # Block multi-statement (;) to prevent injection
+    if ";" in cleaned:
+        return "Multi-statement queries not allowed. Execute one statement at a time."
+
     if permission == "readonly":
         return "Database is read-only. Set permission to 'readwrite' or 'admin' in config."
 
@@ -111,7 +115,8 @@ def write_audit_log(path: str, database: str, sql: str, result: str) -> None:
 
     os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
     timestamp = datetime.now().isoformat()
-    line = f"{timestamp}\t{database}\t{result}\t{sql}\n"
+    sql_safe = sql.replace("\n", " ").replace("\t", " ").replace("\r", "")
+    line = f"{timestamp}\t{database}\t{result}\t{sql_safe}\n"
     with open(path, "a") as f:
         f.write(line)
 
