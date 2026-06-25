@@ -69,6 +69,58 @@ def validate_sql(sql: str) -> str | None:
 # --- JSON serializer ---
 
 
+def validate_write_sql(sql: str, permission: str, *, force: bool = False) -> str | None:
+    """Validate SQL for write operations. Returns error message or None if OK."""
+    cleaned = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
+    cleaned = re.sub(r"--.*$", "", cleaned, flags=re.MULTILINE)
+    cleaned = cleaned.strip()
+
+    if not cleaned:
+        return "Empty statement"
+
+    # Block multi-statement (;) to prevent injection
+    if ";" in cleaned:
+        return "Multi-statement queries not allowed. Execute one statement at a time."
+
+    if permission == "readonly":
+        return "Database is read-only. Set permission to 'readwrite' or 'admin' in config."
+
+    first_word = cleaned.split()[0].upper()
+
+    # Reject SELECT — use query tool for that
+    if first_word in ("SELECT", "WITH", "EXPLAIN", "SHOW"):
+        return f"Use the 'query' tool for {first_word} statements."
+
+    # DDL requires admin
+    ddl_words = ("TRUNCATE", "DROP", "ALTER", "CREATE", "GRANT", "REVOKE")
+    if first_word in ddl_words and permission != "admin":
+        return f"{first_word} requires 'admin' permission (current: {permission})."
+
+    # DELETE without WHERE safety check
+    if first_word == "DELETE" and not force:
+        if not re.search(r"\bWHERE\b", cleaned, re.IGNORECASE):
+            return "DELETE without WHERE clause rejected. Use force=true to override."
+
+    # readwrite allows INSERT, UPDATE, DELETE (with WHERE)
+    allowed_write = ("INSERT", "UPDATE", "DELETE")
+    if permission == "readwrite" and first_word not in allowed_write:
+        return f"Permission 'readwrite' only allows INSERT/UPDATE/DELETE (got {first_word})."
+
+    return None
+
+
+def write_audit_log(path: str, database: str, sql: str, result: str) -> None:
+    """Append write operation to audit log."""
+    from datetime import datetime
+
+    os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+    timestamp = datetime.now().isoformat()
+    sql_safe = sql.replace("\n", " ").replace("\t", " ").replace("\r", "")
+    line = f"{timestamp}\t{database}\t{result}\t{sql_safe}\n"
+    with open(path, "a") as f:
+        f.write(line)
+
+
 def _json_serializer(obj: object) -> object:
     """Handle types that json.dumps can't serialize natively."""
     if isinstance(obj, (datetime, date, time)):
@@ -208,6 +260,26 @@ def _create_server() -> Server:
                     "required": ["database"],
                 },
             ),
+            Tool(
+                name="execute",
+                description=f"Execute a write SQL statement (INSERT/UPDATE/DELETE). Only available on databases with permission 'readwrite' or 'admin'. Available: {db_enum_desc}",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "database": {"type": "string", "description": f"Database ID. One of: {db_enum_desc}"},
+                        "sql": {
+                            "type": "string",
+                            "description": "SQL write statement (INSERT, UPDATE, DELETE, or DDL for admin).",
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "Override safety checks (e.g. DELETE without WHERE). Default: false.",
+                            "default": False,
+                        },
+                    },
+                    "required": ["database", "sql"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -289,6 +361,30 @@ def _create_server() -> Server:
                     )
 
                 return [TextContent(type="text", text=json.dumps(tables, indent=2, default=_json_serializer))]
+
+            elif name == "execute":
+                db_id = arguments["database"]
+                sql = arguments["sql"].strip()
+                force = arguments.get("force", False)
+
+                if db_id not in _conn_mgr.connections:
+                    return [TextContent(type="text", text=f"Error: Unknown database '{db_id}'")]
+
+                db = _conn_mgr.connections[db_id]
+                permission = db.config.permission
+
+                error = validate_write_sql(sql, permission, force=force)
+                if error:
+                    return [TextContent(type="text", text=f"Error: {error}")]
+
+                audit_path = os.path.expanduser("~/.local/share/db-mcp-py/audit.log")
+                try:
+                    result = await _conn_mgr.execute(db_id, sql)
+                    write_audit_log(audit_path, db_id, sql, "success")
+                    return [TextContent(type="text", text=f"OK: {result}")]
+                except Exception as e:
+                    write_audit_log(audit_path, db_id, sql, f"error: {e}")
+                    raise
 
             else:
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]
