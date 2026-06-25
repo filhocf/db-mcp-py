@@ -40,6 +40,7 @@ class ConnectionConfig(BaseModel):
     max_connections: int | None = None
     read_only: bool | None = None
     ssl: bool | str = False
+    permission: str = Field(default="readonly", pattern=r"^(readonly|readwrite|admin)$")
 
     @model_validator(mode="after")
     def resolve_default_port(self) -> ConnectionConfig:

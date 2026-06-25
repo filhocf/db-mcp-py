@@ -187,6 +187,18 @@ class ConnectionManager:
                 return await self.query(conn_id, sql, _retry=False)
             raise
 
+    async def execute(self, conn_id: str, sql: str) -> str:
+        """Execute a write statement (INSERT/UPDATE/DELETE/DDL)."""
+        db = self.connections.get(conn_id)
+        if not db or not db.engine:
+            raise ConnectionError(f"Database '{conn_id}' is not connected")
+
+        logger.info("Execute [%s]: %s", conn_id, sql[:200])
+        timeout = db.effective.get("query_timeout", 30)
+        async with db.engine.begin() as conn:
+            result = await asyncio.wait_for(conn.execute(text(sql)), timeout=timeout)
+            return f"{result.rowcount} row(s) affected"
+
     async def get_schema(self, conn_id: str) -> list[dict]:
         """Get schema information."""
         db = self.connections.get(conn_id)
